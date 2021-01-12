@@ -1,16 +1,18 @@
-pub mod rational;
 pub mod complex;
-pub mod matrix;
-pub mod util;
 pub mod eval;
+pub mod matrix;
+pub mod ops;
+pub mod rational;
+pub mod util;
+pub mod value;
 
-use rational::*;
 use complex::*;
 use eval::*;
+use rational::*;
 
-use std::convert::TryInto;
+use std::io::Write;
 
-peg::parser!{
+peg::parser! {
     grammar computor_parser() for str {
         rule number() -> Rational
             = quiet!{ n:$(['+' | '-']? " "* ['0'..='9']+ ("." ['0'..='9']+)?)
@@ -20,15 +22,15 @@ peg::parser!{
             = quiet!{ ident:$(['a'..='z' | 'A'..='Z'] ['a'..='z' | 'A'..='Z' | '0'..='9']*)
             { ident.into() } } / expected!("identifier")
 
-        rule matrix_row() -> Vec<Rational>
-            = "[" " "* n:number() ** (" "* "," " "*) " "*  "]"
+        rule matrix_row() -> Vec<Box<ASTNode>>
+            = "[" " "* n:expression() ** (" "* "," " "*) " "*  "]"
             { n }
 
-        rule matrix() -> Vec<Vec<Rational>>
+        rule matrix() -> Vec<Vec<Box<ASTNode>>>
             = "[" " "* rows:matrix_row() ** (" "* ";" " "*) " "*  "]"
             { rows }
-            / "[" " "* n:number() ** (" "* ";" " "*) " "*  "]"
-            { n.iter().map(|n| vec![*n]).collect() }
+            / "[" " "* n:expression() ** (" "* ";" " "*) " "*  "]"
+            { n.iter().map(|n| vec![n.clone()]).collect() }
             / rows:matrix_row()
             { vec![rows] }
 
@@ -73,7 +75,7 @@ peg::parser!{
                 { Box::new(ASTNode::Var(ident)) }
                 --
                 mat:matrix()
-                { Box::new(ASTNode::Matrix(mat.try_into().unwrap())) }
+                { Box::new(ASTNode::Matrix(mat)) }
                 "i" " "* expr:number()
                 { Box::new(ASTNode::Num(Complex::imag(expr))) }
                 expr:number() " "* "i"
@@ -83,25 +85,48 @@ peg::parser!{
                 expr:number()
                 { Box::new(ASTNode::Num(Complex::real(expr))) }
             } }
-            / expected!("expression")
+            // / expected!("expression")
     }
 }
 
-type ParseError = peg::error::ParseError<peg::str::LineCol>;
+// type ParseError = peg::error::ParseError<peg::str::LineCol>;
 
-fn main() -> Result<(), ParseError> {
-    let parsed = computor_parser::expression(std::env::args().nth(1).unwrap().trim())?;
-    println!("Parsed: {:?}", parsed);
-
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = State::new();
 
-    let ev = parsed.eval(&mut state);
-    println!("{:?}", ev);
+    let mut s = String::new();
+    loop {
+        s.clear();
 
-    match ev {
-        Err(e) => println!("Evaluation error: {:?}", e),
-        Ok(Some(v)) => println!("{}", v),
-        Ok(None) => println!("None"),
+        std::io::stdout().write("> ".as_bytes())?;
+        std::io::stdout().flush()?;
+        std::io::stdin().read_line(&mut s)?;
+
+        if s.len() == 0 {
+            break;
+        }
+
+        if s.trim() == "" {
+            continue;
+        }
+
+        let parsed_res = computor_parser::expression(s.trim());
+
+        if let Err(_) = parsed_res {
+            println!("Parsing error");
+            continue;
+        }
+
+        let parsed = parsed_res.unwrap();
+
+        match parsed.eval(&mut state) {
+            Ok(Some(val)) => println!("{}", val),
+            Ok(None) => {},
+            Err(e) => {
+                println!("Evaluation error: {}", e);
+                continue;
+            }
+        }
     }
 
     Ok(())

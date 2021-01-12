@@ -1,167 +1,348 @@
 use std::fmt;
-use std::ops::{Add, Sub, Mul, Div, Neg, Index, IndexMut};
-use std::convert::TryFrom;
+use std::ops::{Index, IndexMut};
 
-use crate::rational::Rational;
-
-#[derive(Debug)]
-pub struct SizeMismatchError;
+use crate::complex::*;
+use crate::ops::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Matrix {
     rows: usize,
     cols: usize,
-    values: Vec<Rational>,
+    values: Vec<Complex>,
 }
 
 impl Matrix {
-    fn dim(&self) -> (usize, usize) {
+    pub fn new(rows: usize, cols: usize, values: Vec<Complex>) -> Matrix {
+        assert_eq!(values.len(), cols * rows);
+        Matrix { rows, cols, values }
+    }
+
+    pub fn dim(&self) -> (usize, usize) {
         (self.rows, self.cols)
+    }
+
+    pub fn empty() -> Matrix {
+        Matrix {
+            rows: 0,
+            cols: 0,
+            values: vec![],
+        }
+    }
+
+    pub fn zeros(rows: usize, cols: usize) -> Matrix {
+        Matrix {
+            rows,
+            cols,
+            values: vec![Complex::ZERO; rows * cols],
+        }
     }
 }
 
 impl fmt::Display for Matrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[")?;
-        if self.cols == 1 {
-            for (i, el) in self.values.iter().enumerate() {
-                write!(f, "{}", el)?;
-                if i != self.rows - 1 {
-                    write!(f, "; ")?;
-                }
-            }
-        } else if self.rows == 1 {
+        if self.cols != 1 || self.rows == 1 {
             write!(f, "[")?;
-            for (i, el) in self.values.iter().enumerate() {
-                write!(f, "{}", el)?;
-                if i != self.rows - 1 {
+        }
+        for c in 0..self.cols {
+            if self.rows != 1 {
+                write!(f, "[")?;
+            }
+            for r in 0..self.rows {
+                write!(f, "{}", &self[(r, c)])?;
+                if r != self.rows - 1 {
                     write!(f, ", ")?;
                 }
             }
-            write!(f, "]")?
-        } else {
-            for c in 0..self.cols {
-                write!(f, "[")?;
-                for r in 0..self.rows {
-                    write!(f, "{}", self[(r, c)])?;
-                    if r != self.rows - 1 {
-                        write!(f, ", ")?;
-                    }
-                }
+            if self.rows != 1 {
                 write!(f, "]")?;
-                if c != self.rows - 1 {
-                    write!(f, "; ")?;
-                }
+            }
+            if c != self.cols - 1 {
+                write!(f, "; ")?;
             }
         }
-        write!(f, "]")?;
+        if self.cols != 1 || self.rows == 1 {
+            write!(f, "]")?;
+        }
         Ok(())
     }
 }
 
 impl Index<(usize, usize)> for Matrix {
-    type Output = Rational;
+    type Output = Complex;
 
     fn index(&self, (r, c): (usize, usize)) -> &Self::Output {
+        assert!(r < self.rows);
+        assert!(c < self.cols);
         &self.values[c * self.rows + r]
     }
 }
 
 impl IndexMut<(usize, usize)> for Matrix {
     fn index_mut(&mut self, (r, c): (usize, usize)) -> &mut Self::Output {
+        assert!(r < self.rows);
+        assert!(c < self.cols);
         &mut self.values[c * self.rows + r]
     }
 }
 
-impl TryFrom<Vec<Vec<Rational>>> for Matrix {
-    type Error = SizeMismatchError;
-
-    fn try_from(value: Vec<Vec<Rational>>) -> Result<Self, Self::Error> {
-        if value.len() == 0 {
-            return Ok(Matrix { rows: 0, cols: 0, values: vec![] });
-        }
-        let cols = value.len();
-        let rows = value[0].len();
-        let mut ctnr = vec![];
-        for mut row in value {
-            if row.len() != rows {
-                return Err(SizeMismatchError);
-            }
-            ctnr.append(&mut row);
-        }
-        Ok(Matrix { rows, cols, values: ctnr })
-    }
-}
-
-impl Sub for &Matrix {
+impl TrySub for &Matrix {
     type Output = Matrix;
 
-    fn sub(self, other: &Matrix) -> Matrix {
+    fn try_sub(self, other: &Matrix) -> Result<Self::Output, CalcError> {
         if self.dim() != other.dim() {
-            panic!("Cannot substract matrices of different dimensions");
+            Err(CalcError {
+                kind: CalcErrorKind::DimensionMismatch,
+                op: "-",
+                arg1: self.clone().into(),
+                arg2: other.clone().into(),
+            })?;
         }
-        Matrix {
+        Ok(Matrix {
             rows: self.rows,
             cols: self.cols,
-            values: self.values.iter()
+            values: self
+                .values
+                .iter()
                 .zip(&other.values)
                 .map(|(el, oth)| *el - *oth)
                 .collect(),
+        })
+    }
+}
+
+impl Sub<Complex> for &Matrix {
+    type Output = Matrix;
+
+    fn sub(self, other: Complex) -> Matrix {
+        Matrix {
+            rows: self.rows,
+            cols: self.cols,
+            values: self.values.iter().map(|el| *el - other).collect(),
         }
     }
 }
 
-impl Add for &Matrix {
+impl Sub<&Matrix> for Complex {
     type Output = Matrix;
 
-    fn add(self, other: &Matrix) -> Matrix {
-        if self.dim() != other.dim() {
-            panic!("Cannot add matrices of different dimensions");
-        }
+    fn sub(self, other: &Matrix) -> Matrix {
         Matrix {
+            rows: other.rows,
+            cols: other.cols,
+            values: other.values.iter().map(|el| self - *el).collect(),
+        }
+    }
+}
+
+impl TryAdd for &Matrix {
+    type Output = Matrix;
+
+    fn try_add(self, other: &Matrix) -> Result<Self::Output, CalcError> {
+        if self.dim() != other.dim() {
+            Err(CalcError {
+                kind: CalcErrorKind::DimensionMismatch,
+                op: "+",
+                arg1: self.clone().into(),
+                arg2: other.clone().into(),
+            })?;
+        }
+        Ok(Matrix {
             rows: self.rows,
             cols: self.cols,
-            values: self.values.iter()
+            values: self
+                .values
+                .iter()
                 .zip(&other.values)
                 .map(|(el, oth)| *el + *oth)
                 .collect(),
+        })
+    }
+}
+
+impl Add<Complex> for &Matrix {
+    type Output = Matrix;
+
+    fn add(self, other: Complex) -> Matrix {
+        Matrix {
+            rows: self.rows,
+            cols: self.cols,
+            values: self.values.iter().map(|el| *el + other).collect(),
         }
     }
 }
 
-impl Mul for &Matrix {
+impl Add<&Matrix> for Complex {
     type Output = Matrix;
 
-    fn mul(self, other: &Matrix) -> Matrix {
-        if self.dim() != other.dim() {
-            panic!("Cannot element-wise multiply matrices of different dimensions");
-        }
+    fn add(self, other: &Matrix) -> Matrix {
         Matrix {
+            rows: other.rows,
+            cols: other.cols,
+            values: other.values.iter().map(|el| self + *el).collect(),
+        }
+    }
+}
+
+impl TryMul for &Matrix {
+    type Output = Matrix;
+
+    fn try_mul(self, other: &Matrix) -> Result<Self::Output, CalcError> {
+        if self.dim() != other.dim() {
+            Err(CalcError {
+                kind: CalcErrorKind::DimensionMismatch,
+                op: "*",
+                arg1: self.clone().into(),
+                arg2: other.clone().into(),
+            })?;
+        }
+        Ok(Matrix {
             rows: self.rows,
             cols: self.cols,
-            values: self.values.iter()
+            values: self
+                .values
+                .iter()
                 .zip(&other.values)
                 .map(|(el, oth)| *el * *oth)
                 .collect(),
+        })
+    }
+}
+
+impl Mul<Complex> for &Matrix {
+    type Output = Matrix;
+
+    fn mul(self, other: Complex) -> Matrix {
+        Matrix {
+            rows: self.rows,
+            cols: self.cols,
+            values: self.values.iter().map(|el| *el * other).collect(),
         }
     }
 }
 
-impl Div for &Matrix {
+impl Mul<&Matrix> for Complex {
     type Output = Matrix;
 
-    fn div(self, other: &Matrix) -> Matrix {
-        if self.dim() != other.dim() {
-            panic!("Cannot divide matrices of different dimensions");
-        }
+    fn mul(self, other: &Matrix) -> Matrix {
         Matrix {
+            rows: other.rows,
+            cols: other.cols,
+            values: other.values.iter().map(|el| self * *el).collect(),
+        }
+    }
+}
+
+impl TryDiv for &Matrix {
+    type Output = Matrix;
+
+    fn try_div(self, other: &Matrix) -> Result<Self::Output, CalcError> {
+        if self.dim() != other.dim() {
+            Err(CalcError {
+                kind: CalcErrorKind::DimensionMismatch,
+                op: "/",
+                arg1: self.clone().into(),
+                arg2: other.clone().into(),
+            })?;
+        }
+        Ok(Matrix {
             rows: self.rows,
             cols: self.cols,
-            values: self.values.iter()
+            values: self
+                .values
+                .iter()
                 .zip(&other.values)
-                .map(|(el, oth)| *el / *oth)
-                .collect(),
+                .map(|(el, oth)| el.try_div(*oth))
+                .collect::<Result<Vec<Complex>, CalcError>>()?,
+        })
+    }
+}
+
+impl TryDiv<Complex> for &Matrix {
+    type Output = Matrix;
+
+    fn try_div(self, other: Complex) -> Result<Self::Output, CalcError> {
+        Ok(Matrix {
+            rows: self.rows,
+            cols: self.cols,
+            values: self
+                .values
+                .iter()
+                .map(|el| el.try_div(other))
+                .collect::<Result<Vec<Complex>, CalcError>>()?,
+        })
+    }
+}
+
+impl TryDiv<&Matrix> for Complex {
+    type Output = Matrix;
+
+    fn try_div(self, other: &Matrix) -> Result<Self::Output, CalcError> {
+        Ok(Matrix {
+            rows: other.rows,
+            cols: other.cols,
+            values: other
+                .values
+                .iter()
+                .map(|el| self.try_div(*el))
+                .collect::<Result<Vec<Complex>, CalcError>>()?,
+        })
+    }
+}
+
+impl TryRem for &Matrix {
+    type Output = Matrix;
+
+    fn try_rem(self, other: &Matrix) -> Result<Self::Output, CalcError> {
+        if self.dim() != other.dim() {
+            Err(CalcError {
+                kind: CalcErrorKind::DimensionMismatch,
+                op: "%",
+                arg1: self.clone().into(),
+                arg2: other.clone().into(),
+            })?;
         }
+        Ok(Matrix {
+            rows: self.rows,
+            cols: self.cols,
+            values: self
+                .values
+                .iter()
+                .zip(&other.values)
+                .map(|(el, oth)| el.try_rem(*oth))
+                .collect::<Result<Vec<Complex>, CalcError>>()?,
+        })
+    }
+}
+
+impl TryRem<Complex> for &Matrix {
+    type Output = Matrix;
+
+    fn try_rem(self, other: Complex) -> Result<Self::Output, CalcError> {
+        Ok(Matrix {
+            rows: self.rows,
+            cols: self.cols,
+            values: self
+                .values
+                .iter()
+                .map(|el| other.try_rem(*el))
+                .collect::<Result<Vec<Complex>, CalcError>>()?,
+        })
+    }
+}
+
+impl TryRem<&Matrix> for Complex {
+    type Output = Matrix;
+
+    fn try_rem(self, other: &Matrix) -> Result<Self::Output, CalcError> {
+        Ok(Matrix {
+            rows: other.rows,
+            cols: other.cols,
+            values: other
+                .values
+                .iter()
+                .map(|el| self.try_rem(*el))
+                .collect::<Result<Vec<Complex>, CalcError>>()?,
+        })
     }
 }
 
@@ -172,9 +353,35 @@ impl Neg for &Matrix {
         Matrix {
             rows: self.rows,
             cols: self.cols,
-            values: self.values.iter()
-                .map(|el| -*el)
-                .collect(),
+            values: self.values.iter().map(|el| -*el).collect(),
         }
+    }
+}
+
+impl TryMatMul<&Matrix> for &Matrix {
+    type Output = Matrix;
+
+    fn try_mat_mul(self, other: &Matrix) -> Result<Self::Output, CalcError> {
+        println!("hi row={} col={}", self.rows, self.cols);
+        if self.rows != other.cols {
+            Err(CalcError {
+                kind: CalcErrorKind::DimensionMismatch,
+                op: "**",
+                arg1: self.clone().into(),
+                arg2: other.clone().into(),
+            })?;
+        }
+
+        let mut res = Matrix::zeros(other.cols, self.rows);
+
+        for c in 0..self.cols {
+            for r in 0..other.rows {
+                for i in 0..self.rows {
+                    res[(r, c)] = res[(r, c)] + self[(r, i)] * other[(i, c)];
+                }
+            }
+        }
+
+        Ok(res)
     }
 }

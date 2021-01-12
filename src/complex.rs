@@ -1,62 +1,70 @@
 use std::fmt;
-use std::ops::{Add, Sub, Mul, Div, Neg};
 
+use crate::ops::*;
 use crate::rational::Rational;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Complex(Rational, Rational);
+pub struct Complex {
+    pub r: Rational,
+    pub i: Rational,
+}
 
 impl Complex {
     pub fn new(r: Rational, i: Rational) -> Complex {
-        Complex(r, i)
+        Complex { r, i }
     }
 
     pub fn real(r: Rational) -> Complex {
-        Complex(r, Rational::ZERO)
+        Complex {
+            r,
+            i: Rational::ZERO,
+        }
     }
     pub fn imag(i: Rational) -> Complex {
-        Complex(Rational::ZERO, i)
+        Complex {
+            r: Rational::ZERO,
+            i,
+        }
     }
 
     pub fn is_real(self) -> bool {
-        self.1 == 0.into()
+        self.i == 0.into()
     }
     pub fn is_imag(self) -> bool {
-        self.0 == 0.into()
+        self.r == 0.into()
     }
 
-    pub fn powi(self, i: u32) -> Complex {
-        
-    }
+    pub const ZERO: Complex = Complex {
+        r: Rational::ZERO,
+        i: Rational::ZERO,
+    };
 }
 
 impl fmt::Display for Complex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0 == Rational::ZERO && self.1 == Rational::ZERO {
+        if self.r == Rational::ZERO && self.i == Rational::ZERO {
             write!(f, "0")?;
-        } else if self.0 == Rational::ZERO {
-            write!(f, "{}i", self.1)?;
-        } else if self.1 == Rational::ZERO {
-            write!(f, "{}", self.0)?;
+        } else if self.r == Rational::ZERO {
+            if self.i != 1.into() {
+                write!(f, "{}", self.i.abs())?;
+            }
+            write!(f, "i")?;
+        } else if self.i == Rational::ZERO {
+            write!(f, "{}", self.r)?;
         } else {
-            write!(f, "{} ", self.0)?;
-            if self.1 < Rational::ZERO {
+            write!(f, "{} ", self.r)?;
+            if self.i < Rational::ZERO {
                 write!(f, "- ")?;
             } else {
                 write!(f, "+ ")?;
             }
-            write!(f, "{}i", self.1.abs())?;
+            if self.i != 1.into() {
+                write!(f, "{}", self.i.abs())?;
+            }
+            write!(f, "i")?;
         }
 
         Ok(())
-    }
-}
-
-impl Sub for Complex {
-    type Output = Complex;
-
-    fn sub(self, other: Complex) -> Complex {
-        Complex(self.0 - other.0, self.1 - other.1)
     }
 }
 
@@ -64,7 +72,15 @@ impl Add for Complex {
     type Output = Complex;
 
     fn add(self, other: Complex) -> Complex {
-        Complex(self.0 + other.0, self.1 + other.1)
+        Complex::new(self.r + other.r, self.i + other.i)
+    }
+}
+
+impl Sub for Complex {
+    type Output = Complex;
+
+    fn sub(self, other: Complex) -> Complex {
+        Complex::new(self.r - other.r, self.i - other.i)
     }
 }
 
@@ -73,19 +89,67 @@ impl Mul for Complex {
 
     // (a+bi)(c+di) = ac + adi + bci - bd
     fn mul(self, other: Complex) -> Complex {
-        Complex(self.0 * other.0 - self.1 * other.1, self.0 * other.1 + self.1 * other.0)
+        Complex::new(
+            self.r * other.r - self.i * other.i,
+            self.r * other.i + self.i * other.r,
+        )
     }
 }
 
-impl Div for Complex {
+impl TryDiv for Complex {
     type Output = Complex;
 
-    // (a,b)/(c,d) = ((ac+bd)/(c^2+d^2),(bc-ad)/(c^2+d^2))
-    fn div(self, other: Complex) -> Complex {
-        Complex(
-            (self.0 * other.0 + self.1 * other.1) / (other.0.powi(2)+other.1.powi(2)),
-            (self.1 * other.0 - self.0 - other.1) / (other.0.powi(2)+other.1.powi(2)),
-        )
+    // (a + bi)/(c + di) = (ac+bd)/(c^2+d^2) + (bc-ad)/(c^2+d^2)i
+    fn try_div(self, other: Complex) -> Result<Self::Output, CalcError> {
+        if other == Complex::ZERO {
+            Err(CalcError {
+                kind: CalcErrorKind::ComplexNotAllowed,
+                op: "/",
+                arg1: self.into(),
+                arg2: other.into(),
+            })?;
+        }
+
+        let overflow_err = CalcError {
+            kind: CalcErrorKind::OverflowUnderflow,
+            op: "/",
+            arg1: self.into(),
+            arg2: other.into(),
+        };
+
+        let den = other.r.checked_pow(2).ok_or_else(|| overflow_err.clone())?
+            + other.i.checked_pow(2).ok_or_else(|| overflow_err.clone())?;
+
+        Ok(Complex::new(
+            (self.r * other.r + self.i * other.i) / den,
+            (self.i * other.r - self.r * other.i) / den,
+        ))
+    }
+}
+
+impl TryRem for Complex {
+    type Output = Complex;
+
+    fn try_rem(self, other: Complex) -> Result<Self::Output, CalcError> {
+        if !self.is_real() {
+            Err(CalcError {
+                kind: CalcErrorKind::ComplexNotAllowed,
+                op: "%",
+                arg1: self.into(),
+                arg2: other.into(),
+            })?;
+        }
+
+        if other == Complex::ZERO {
+            Err(CalcError {
+                kind: CalcErrorKind::ComplexNotAllowed,
+                op: "/",
+                arg1: self.into(),
+                arg2: other.into(),
+            })?;
+        }
+
+        Ok(Complex::real(self.r % other.r))
     }
 }
 
@@ -93,6 +157,42 @@ impl Neg for Complex {
     type Output = Complex;
 
     fn neg(self) -> Complex {
-        Complex(-self.0, -self.1)
+        Complex::new(-self.r, -self.i)
+    }
+}
+
+impl TryPow for Complex {
+    type Output = Complex;
+
+    fn try_pow(self, other: Complex) -> Result<Self::Output, CalcError> {
+        if !other.is_real() {
+            Err(CalcError {
+                kind: CalcErrorKind::ComplexNotAllowed,
+                op: "^",
+                arg1: self.into(),
+                arg2: other.into(),
+            })?;
+        }
+
+        if other.r.get_den() != 1 || other.r.get_num() < 0 {
+            Err(CalcError {
+                kind: CalcErrorKind::ExpPositiveInt,
+                op: "^",
+                arg1: self.into(),
+                arg2: other.into(),
+            })?;
+        }
+
+        let overflow_err = CalcError {
+            kind: CalcErrorKind::OverflowUnderflow,
+            op: "/",
+            arg1: self.into(),
+            arg2: other.into(),
+        };
+        Ok(Complex::real(
+            self.r
+                .checked_pow(other.r.get_num() as u32)
+                .ok_or(overflow_err)?,
+        ))
     }
 }
