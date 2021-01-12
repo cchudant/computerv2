@@ -114,29 +114,33 @@ pub enum ASTNode {
 }
 
 fn disp_matrix(mat: &Vec<Vec<Box<ASTNode>>>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let cols = mat.len();
-    let rows = mat.first().map(|e| e.len()).unwrap_or(0);
-    if cols != 1 || rows == 1 {
+    let rows = mat.len();
+    let cols = mat.first().map(|e| e.len()).unwrap_or(0);
+    if rows != 1 || cols == 1 {
         write!(f, "[")?;
     }
-    for c in 0..cols {
-        if rows != 1 {
+    for r in 0..rows {
+        if cols != 1 {
             write!(f, "[")?;
         }
-        for r in 0..rows {
-            write!(f, "{}", mat[c][r])?;
-            if r != rows - 1 {
+        for c in 0..cols {
+            if let Some(e) = mat[r].get(c) {
+                write!(f, "{}", e)?;
+            } else {
+                write!(f, "!")?;
+            }
+            if c != cols - 1 {
                 write!(f, ", ")?;
             }
         }
-        if rows != 1 {
+        if cols != 1 {
             write!(f, "]")?;
         }
-        if c != cols - 1 {
+        if r != rows - 1 {
             write!(f, "; ")?;
         }
     }
-    if cols != 1 || rows == 1 {
+    if rows != 1 || cols == 1 {
         write!(f, "]")?;
     }
     Ok(())
@@ -269,11 +273,11 @@ impl ASTNode {
                 if matrix.len() == 0 {
                     Matrix::empty().into()
                 } else {
-                    let cols = matrix.len();
-                    let rows = matrix[0].len();
+                    let rows = matrix.len();
+                    let cols = matrix[0].len();
                     let mut ctnr = vec![];
                     for row in matrix {
-                        if row.len() != rows {
+                        if row.len() != cols {
                             return Err(EvalError::InvalidMatrixShape {
                                 node: Box::new(self.clone()),
                             })?;
