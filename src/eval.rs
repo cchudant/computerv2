@@ -62,6 +62,7 @@ pub enum EvalError {
     ValueInvalidInMatrix { node: Box<ASTNode> },
     StackOverflow,
     SetIVar,
+    SolveValueType,
     Value(CalcError),
 }
 
@@ -81,6 +82,7 @@ impl fmt::Display for EvalError {
             }
             EvalError::StackOverflow => write!(f, "stack overflow"),
             EvalError::SetIVar => write!(f, "cannot set the `i` variable"),
+            EvalError::SolveValueType => write!(f, "cannot solve"),
             EvalError::Value(e) => write!(f, "{}", e),
         }
     }
@@ -172,6 +174,99 @@ impl fmt::Display for ASTNode {
 }
 
 impl ASTNode {
+
+    fn has_variable(&self, name: &str) -> Option<bool> {
+        Some(match self {
+            ASTNode::Var(v) => v == name,
+            ASTNode::Par(v) => v.has_variable(name)?,
+            ASTNode::Neg(v) => v.has_variable(name)?,
+            ASTNode::Pos(v) => v.has_variable(name)?,
+            ASTNode::Set( .. ) => None?,
+            ASTNode::FunSet( .. ) => None?,
+            ASTNode::Find( .. ) => None?,
+            ASTNode::Add(v1, v2) => v1.has_variable(name)? || v2.has_variable(name)?,
+            ASTNode::Sub(v1, v2) => v1.has_variable(name)? || v2.has_variable(name)?,
+            ASTNode::Mul(v1, v2) => v1.has_variable(name)? || v2.has_variable(name)?,
+            ASTNode::Div(v1, v2) => v1.has_variable(name)? || v2.has_variable(name)?,
+            ASTNode::Mod(v1, v2) => v1.has_variable(name)? || v2.has_variable(name)?,
+            ASTNode::Pow(v1, v2) => v1.has_variable(name)? || v2.has_variable(name)?,
+            ASTNode::MatrixMul(v1, v2) => v1.has_variable(name)? || v2.has_variable(name)?,
+            _ => false,
+        })
+    }
+
+    fn eval_partial(&self, state: &mut State, unknown_var: &str) -> Result<ASTNode, EvalError> {
+        // if !self.has_variable(unknown_var) {
+        //     match self.eval(state)? {
+        //         Some(EvalValue::Complex(c)) => Ok(ASTNode::Num(c)),
+        //         Some(_) => Err(EvalError::SolveValueType)?,
+        //         None => Err(EvalError::MissingValue { node: Box::new(self.clone()) })?,
+        //     }
+        // }
+        Ok(match self {
+            ASTNode::Var(v) => if v == unknown_var { ASTNode::Var(v.clone()) } else { self.eval(state)?.ok_or_else(|| EvalError::MissingValue { node: lhs.clone() }) },
+            ASTNode::Par(v) => v.eval_partial(state, unknown_var)?,
+            ASTNode::Neg(v) => v.eval_partial(state, unknown_var)?,
+            ASTNode::Pos(v) => v.eval_partial(state, unknown_var)?,
+            ASTNode::Set( .. ) => Err(EvalError::SolveValueType)?,
+            ASTNode::FunSet( .. ) => Err(EvalError::SolveValueType)?,
+            ASTNode::Find( .. ) => Err(EvalError::SolveValueType)?,
+            ASTNode::Add(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
+                (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_add(v2)?),
+                (v1, v2) => ASTNode::Add(Box::new(v1.clone()), Box::new(v2.clone())),
+            },
+            ASTNode::Sub(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
+                (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_sub(v2)?),
+                (v1, v2) => ASTNode::Sub(Box::new(v1.clone()), Box::new(v2.clone())),
+            },
+            ASTNode::Mul(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
+                (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_mul(v2)?),
+                (v1, v2) => ASTNode::Mul(Box::new(v1.clone()), Box::new(v2.clone())),
+            },
+            ASTNode::Div(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
+                (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_div(v2)?),
+                (v1, v2) => ASTNode::Div(Box::new(v1.clone()), Box::new(v2.clone())),
+            },
+            ASTNode::Mod(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
+                (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_rem(v2)?),
+                (v1, v2) => ASTNode::Mod(Box::new(v1.clone()), Box::new(v2.clone())),
+            },
+            ASTNode::Pow(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
+                (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_pow(v2)?),
+                (v1, v2) => ASTNode::Pow(Box::new(v1.clone()), Box::new(v2.clone())),
+            },
+            ASTNode::MatrixMul(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
+                (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_mat_mul(v2)?),
+                (v1, v2) => ASTNode::MatrixMul(Box::new(v1.clone()), Box::new(v2.clone())),
+            },
+            ASTNode::Add(v1, v2) => v1.eval_partial(state, unknown_var)? || v2.eval_partial(state, unknown_var)?,
+            ASTNode::Sub(v1, v2) => v1.eval_partial(state, unknown_var)? || v2.eval_partial(state, unknown_var)?,
+            ASTNode::Mul(v1, v2) => v1.eval_partial(state, unknown_var)? || v2.eval_partial(state, unknown_var)?,
+            ASTNode::Div(v1, v2) => v1.eval_partial(state, unknown_var)? || v2.eval_partial(state, unknown_var)?,
+            ASTNode::Mod(v1, v2) => v1.eval_partial(state, unknown_var)? || v2.eval_partial(state, unknown_var)?,
+            ASTNode::Pow(v1, v2) => v1.eval_partial(state, unknown_var)? || v2.eval_partial(state, unknown_var)?,
+            ASTNode::MatrixMul(v1, v2) => v1.eval_partial(state, unknown_var)? || v2.eval_partial(state, unknown_var)?,
+            _ => false,
+        })
+    }
+
+    fn simplify(&self, state: &mut State, unknown_var: &str) -> Result<ASTNode, EvalError> {
+        Ok(match self {
+            ASTNode::Par(node) => node.simplify(state)?,
+            ASTNode::Var(v) => if v == unknown_var {
+                ASTNode::Var(v.clone())
+            } else { match self.eval(state)? {
+                None => Err(EvalError::MissingValue { node: lhs.clone() }))?,
+            }},
+            ASTNode::Add(v) => self.eval_simplify(state)?,
+            ASTNode::Add(v1, v2) => ASTNode::Add(v1.clone(), v2.clone()),
+            ASTNode::Sub(v1, v2) => ASTNode::Add(v1.clone(), v2.clone()),
+            ASTNode::Add(v1, v2) => ASTNode::Add(v1.clone(), v2.clone()),
+            ASTNode::Add(v1, v2) => ASTNode::Add(v1.clone(), v2.clone()),
+            ASTNode::Add(v1, v2) => ASTNode::Add(v1.clone(), v2.clone()),
+        })
+    }
+
     pub fn eval(&self, state: &mut State) -> Result<Option<EvalValue>, EvalError> {
         match self {
             ASTNode::Par(node) => node.eval(state),
@@ -228,6 +323,7 @@ impl ASTNode {
             })),
             ASTNode::Pos(el) => el.eval(state),
             ASTNode::Set(s, node) => {
+                if s.to_lowercase() == "i" { Err(EvalError::SetIVar)? }
                 if let Some(val) = node.eval(state)? {
                     state.set(s, val.clone());
                     Ok(Some(val))
@@ -235,7 +331,16 @@ impl ASTNode {
                     Err(EvalError::MissingValue { node: node.clone() })
                 }
             }
-            ASTNode::Find(_lhs, _var_name) => unimplemented!(),
+            ASTNode::Find(lhs, var_name) => {
+                if let Some(_) = var_name {
+                    unimplemented!()
+                } else {
+                    Ok(match lhs.eval(state)? {
+                        Some(v) => Some(v),
+                        None => Err(EvalError::MissingValue { node: lhs.clone() })?
+                    })
+                }
+            },
             ASTNode::Fun(name, node) => {
                 if let Some(param) = node.eval(state)? {
                     let func = state.get(name).cloned();
