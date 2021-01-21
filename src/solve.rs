@@ -184,7 +184,7 @@ impl Equation {
                     (ASTNode::Num(n), ASTNode::Pow(n1, n2)) => match (n1.as_ref(), n2.as_ref()) {
                         (ASTNode::Var(var), ASTNode::Num(p)) => {
                             if !n.is_real() { Err(EvalError::SolveValueType)? }
-                            if !p.is_real() || !p.r.is_whole() { Err(EvalError::SolveValueType)? }
+                            if !p.is_real() || !p.r.is_whole() || !p.r.is_positive_nil() { Err(EvalError::SolveValueType)? }
 
                             if let Some(v) = unknown_var { if v != var { Err(EvalError::SolveValueType)? } }
                             else { *unknown_var = Some(var.clone()); }
@@ -197,7 +197,7 @@ impl Equation {
                     (ASTNode::Pow(n1, n2), ASTNode::Num(n)) => match (n1.as_ref(), n2.as_ref()) {
                         (ASTNode::Var(var), ASTNode::Num(p)) => {
                             if !n.is_real() { Err(EvalError::SolveValueType)? }
-                            if !p.is_real() || !p.r.is_whole() { Err(EvalError::SolveValueType)? }
+                            if !p.is_real() || !p.r.is_whole() || !p.r.is_positive_nil() { Err(EvalError::SolveValueType)? }
 
                             if let Some(v) = unknown_var { if v != var { Err(EvalError::SolveValueType)? } }
                             else { *unknown_var = Some(var.clone()); }

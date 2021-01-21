@@ -67,6 +67,9 @@ impl Rational {
     pub fn is_whole(&self) -> bool {
         return self.den == 1
     }
+    pub fn is_positive_nil(&self) -> bool {
+        return self.num >= 0
+    }
 }
 
 impl Default for Rational {
