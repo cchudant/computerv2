@@ -1,8 +1,9 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::num::ParseIntError;
-use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use std::str::FromStr;
+
+use crate::ops::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Rational {
@@ -62,6 +63,10 @@ impl Rational {
     pub fn get_den(&self) -> i64 {
         self.den
     }
+
+    pub fn is_whole(&self) -> bool {
+        return self.den == 1
+    }
 }
 
 impl Default for Rational {
@@ -75,7 +80,7 @@ impl fmt::Display for Rational {
         if self.den == 1 {
             write!(f, "{}", self.num)?;
         } else {
-            write!(f, "{}/{}", self.num, self.den)?;
+            write!(f, "{}", self.num as f64 / self.den as f64)?;
         }
         Ok(())
     }
@@ -108,6 +113,12 @@ impl FromStr for Rational {
 impl From<i64> for Rational {
     fn from(val: i64) -> Rational {
         Rational { num: val, den: 1 }
+    }
+}
+
+impl Into<f64> for Rational {
+    fn into(self) -> f64 {
+        self.num as f64 / self.den as f64
     }
 }
 

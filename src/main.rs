@@ -5,6 +5,7 @@ pub mod ops;
 pub mod rational;
 pub mod util;
 pub mod value;
+pub mod solve;
 
 use complex::*;
 use eval::*;
@@ -36,12 +37,13 @@ peg::parser! {
 
         pub rule expression() -> Box<ASTNode>
             = quiet!{ precedence!{
-                expr:(@) " "* "=" " "* ident:identifier()? " "* "?"
-                { Box::new(ASTNode::Find(expr, ident)) }
-                ident:identifier() " "* "=" " "* expr2:expression()
+                ident:identifier() " "* "=" " "* expr2:expression() " "* !"?"
                 { Box::new(ASTNode::Set(ident, expr2)) }
-                ident1:identifier() " "* "(" " "* ident2:identifier() " "* ")" " "* "=" " "*  expr2:(@)
+                ident1:identifier() " "* "(" " "* ident2:identifier() " "* ")" " "* "=" " "*  expr2:expression() " "* !"?"
                 { Box::new(ASTNode::FunSet(ident1, ident2, expr2)) }
+                --
+                expr:(@) " "* "=" " "* expr2:expression()? " "* "?"
+                { Box::new(ASTNode::Find(expr, expr2)) }
                 --
                 expr1:(@) " "* "+" " "*  expr2:@
                 { Box::new(ASTNode::Add(expr1, expr2)) }
@@ -50,6 +52,8 @@ peg::parser! {
                 --
                 expr1:(@) " "* "**" " "*  expr2:@
                 { Box::new(ASTNode::MatrixMul(expr1, expr2)) }
+                expr1:(@) " "* ident:identifier()
+                { Box::new(ASTNode::Mul(expr1, Box::new(ASTNode::Var(ident)))) }
                 expr1:(@) " "* "*" " "*  expr2:@
                 { Box::new(ASTNode::Mul(expr1, expr2)) }
                 expr1:(@) " "* "/" " "* expr2:@
@@ -112,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let parsed_res = computor_parser::expression(s.trim());
 
-        if let Err(_) = parsed_res {
+        if let Err(e) = parsed_res {
             println!("Parsing error");
             continue;
         }

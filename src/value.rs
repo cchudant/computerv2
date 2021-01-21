@@ -14,6 +14,7 @@ pub enum EvalValue {
         arg_name: String,
         body: Box<ASTNode>,
     },
+    UnknownSolve(Box<ASTNode>),
 }
 
 impl EvalValue {
@@ -22,6 +23,7 @@ impl EvalValue {
             EvalValue::Complex(..) => "number",
             EvalValue::Matrix(..) => "matrix",
             EvalValue::Function{..} => "function",
+            EvalValue::UnknownSolve(..) => "unknown",
         }
     }
 }
@@ -48,6 +50,7 @@ impl fmt::Display for EvalValue {
                 arg_name,
                 body,
             } => write!(f, "{}({}) = {}", name, arg_name, body),
+            EvalValue::UnknownSolve(v) => write!(f, "{}", v),
         }
     }
 }
