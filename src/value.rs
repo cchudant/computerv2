@@ -22,8 +22,16 @@ impl EvalValue {
         match self {
             EvalValue::Complex(..) => "number",
             EvalValue::Matrix(..) => "matrix",
-            EvalValue::Function{..} => "function",
+            EvalValue::Function { .. } => "function",
             EvalValue::UnknownSolve(..) => "unknown",
+        }
+    }
+
+    pub fn display_with_name(&self, name: &str) {
+        if let EvalValue::Function { arg_name, body, .. } = self {
+            println!("{}({}) = {}", name, arg_name, body);
+        } else {
+            println!("{} = {}", name, self);
         }
     }
 }
@@ -63,7 +71,12 @@ impl TryAdd for EvalValue {
             (EvalValue::Complex(v1), EvalValue::Matrix(ref v2)) => v1.try_add(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Complex(v2)) => v1.try_add(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Matrix(ref v2)) => v1.try_add(v2)?.into(),
-            (arg1, arg2) => Err(CalcError { kind: CalcErrorKind::TypeError, op: "+", arg1, arg2 })?,
+            (arg1, arg2) => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "+",
+                arg1,
+                arg2,
+            })?,
         })
     }
 }
@@ -76,7 +89,12 @@ impl TrySub for EvalValue {
             (EvalValue::Complex(v1), EvalValue::Matrix(ref v2)) => v1.try_sub(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Complex(v2)) => v1.try_sub(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Matrix(ref v2)) => v1.try_sub(v2)?.into(),
-            (arg1, arg2) => Err(CalcError { kind: CalcErrorKind::TypeError, op: "-", arg1, arg2 })?,
+            (arg1, arg2) => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "-",
+                arg1,
+                arg2,
+            })?,
         })
     }
 }
@@ -89,7 +107,12 @@ impl TryMul for EvalValue {
             (EvalValue::Complex(v1), EvalValue::Matrix(ref v2)) => v1.try_mul(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Complex(v2)) => v1.try_mul(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Matrix(ref v2)) => v1.try_mul(v2)?.into(),
-            (arg1, arg2) => Err(CalcError { kind: CalcErrorKind::TypeError, op: "*", arg1, arg2 })?,
+            (arg1, arg2) => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "*",
+                arg1,
+                arg2,
+            })?,
         })
     }
 }
@@ -102,7 +125,12 @@ impl TryDiv for EvalValue {
             (EvalValue::Complex(v1), EvalValue::Matrix(ref v2)) => v1.try_div(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Complex(v2)) => v1.try_div(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Matrix(ref v2)) => v1.try_div(v2)?.into(),
-            (arg1, arg2) => Err(CalcError { kind: CalcErrorKind::TypeError, op: "/", arg1, arg2 })?,
+            (arg1, arg2) => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "/",
+                arg1,
+                arg2,
+            })?,
         })
     }
 }
@@ -115,7 +143,12 @@ impl TryRem for EvalValue {
             (EvalValue::Complex(v1), EvalValue::Matrix(ref v2)) => v1.try_rem(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Complex(v2)) => v1.try_rem(v2)?.into(),
             (EvalValue::Matrix(ref v1), EvalValue::Matrix(ref v2)) => v1.try_rem(v2)?.into(),
-            (arg1, arg2) => Err(CalcError { kind: CalcErrorKind::TypeError, op: "%", arg1, arg2 })?,
+            (arg1, arg2) => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "%",
+                arg1,
+                arg2,
+            })?,
         })
     }
 }
@@ -126,7 +159,12 @@ impl TryNeg for EvalValue {
         Ok(match self {
             EvalValue::Complex(v) => v.try_neg()?.into(),
             EvalValue::Matrix(ref v) => v.try_neg()?.into(),
-            arg1 => Err(CalcError { kind: CalcErrorKind::TypeError, op: "unary -", arg2: arg1.clone(), arg1 })?,
+            arg1 => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "unary -",
+                arg2: arg1.clone(),
+                arg1,
+            })?,
         })
     }
 }
@@ -136,7 +174,12 @@ impl TryPow for EvalValue {
     fn try_pow(self, other: Self) -> Result<Self::Output, CalcError> {
         Ok(match (self, other) {
             (EvalValue::Complex(v1), EvalValue::Complex(v2)) => v1.try_pow(v2)?.into(),
-            (arg1, arg2) => Err(CalcError { kind: CalcErrorKind::TypeError, op: "^", arg1, arg2 })?,
+            (arg1, arg2) => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "^",
+                arg1,
+                arg2,
+            })?,
         })
     }
 }
@@ -146,8 +189,12 @@ impl TryMatMul for EvalValue {
     fn try_mat_mul(self, other: Self) -> Result<Self::Output, CalcError> {
         Ok(match (self, other) {
             (EvalValue::Matrix(ref v1), EvalValue::Matrix(ref v2)) => v1.try_mat_mul(v2)?.into(),
-            (arg1, arg2) => Err(CalcError { kind: CalcErrorKind::TypeError, op: "**", arg1, arg2 })?,
+            (arg1, arg2) => Err(CalcError {
+                kind: CalcErrorKind::TypeError,
+                op: "**",
+                arg1,
+                arg2,
+            })?,
         })
     }
 }
-

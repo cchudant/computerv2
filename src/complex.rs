@@ -38,6 +38,11 @@ impl Complex {
         r: Rational::ZERO,
         i: Rational::ZERO,
     };
+
+    pub const ONE: Complex = Complex {
+        r: Rational::ONE,
+        i: Rational::ZERO,
+    };
 }
 
 impl fmt::Display for Complex {
@@ -143,7 +148,7 @@ impl TryRem for Complex {
         if other == Complex::ZERO {
             Err(CalcError {
                 kind: CalcErrorKind::ComplexNotAllowed,
-                op: "/",
+                op: "%",
                 arg1: self.into(),
                 arg2: other.into(),
             })?;
@@ -185,7 +190,7 @@ impl TryPow for Complex {
 
         let overflow_err = CalcError {
             kind: CalcErrorKind::OverflowUnderflow,
-            op: "/",
+            op: "^",
             arg1: self.into(),
             arg2: other.into(),
         };

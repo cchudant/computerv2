@@ -124,9 +124,9 @@ impl fmt::Display for Equation {
                 if el.p == 0 {
                     write!(f, "{}", a)?;
                 } else if el.p == 1 {
-                    write!(f, "{}*{}", a, unknown_var)?;
+                    write!(f, "{}{}", a, unknown_var)?;
                 } else {
-                    write!(f, "{}*{}^{}", a, unknown_var, el.p)?;
+                    write!(f, "{}{}^{}", a, unknown_var, el.p)?;
                 }
             }
 
@@ -143,8 +143,8 @@ impl fmt::Display for Equation {
 
 impl Equation {
 
-    pub fn try_from_ast(lhs: &ASTNode, rhs: &ASTNode) -> Result<Equation, EvalError> {
-        fn one_side(s: &ASTNode, terms: &mut Vec<Term>, neg: bool, unknown_var: &mut Option<String>) -> Result<(), EvalError> {
+    pub fn try_from_ast(lhs: &ASTNode, rhs: &ASTNode, unknown_var: String) -> Result<Equation, EvalError> {
+        fn one_side(s: &ASTNode, terms: &mut Vec<Term>, neg: bool, unknown_var: &String) -> Result<(), EvalError> {
             match s {
                 ASTNode::Add(v1, v2) => {
                     one_side(v1, terms, false, unknown_var)?;
@@ -157,17 +157,22 @@ impl Equation {
                 ASTNode::Num(n) => {
                     if !n.is_real() { Err(EvalError::SolveValueType)? }
 
-                    terms.push(Term { a: n.r, p: 0 })
+                    let a = if neg { -n.r } else { n.r };
+                    terms.push(Term { a, p: 0 })
                 }
                 ASTNode::Var(var) => {
-                    if let Some(v) = unknown_var { if v != var { Err(EvalError::SolveValueType)? } }
-                    else { *unknown_var = Some(var.clone()); }
+                    if unknown_var != var { Err(EvalError::SolveValueType)? }
 
                     terms.push(Term { a: 1.into(), p: 1 })
                 }
+                ASTNode::Neg(v) => {
+                    one_side(v, terms, !neg, unknown_var)?
+                }
                 ASTNode::Mul(v1, v2) => match (v1.as_ref(), v2.as_ref()) {
-                    (ASTNode::Num(n), ASTNode::Var(_)) => {
+                    (ASTNode::Num(n), ASTNode::Var(var)) => {
                         if !n.is_real() { Err(EvalError::SolveValueType)? }
+
+                        if unknown_var != var { Err(EvalError::SolveValueType)? }
     
                         let a = if neg { -n.r } else { n.r };
                         terms.push(Term { a, p: 1 })
@@ -175,8 +180,7 @@ impl Equation {
                     (ASTNode::Var(var), ASTNode::Num(n)) => {
                         if !n.is_real() { Err(EvalError::SolveValueType)? }
 
-                        if let Some(v) = unknown_var { if v != var { Err(EvalError::SolveValueType)? } }
-                        else { *unknown_var = Some(var.clone()); }
+                        if unknown_var != var { Err(EvalError::SolveValueType)? }
     
                         let a = if neg { -n.r } else { n.r };
                         terms.push(Term { a, p: 1 })
@@ -186,8 +190,7 @@ impl Equation {
                             if !n.is_real() { Err(EvalError::SolveValueType)? }
                             if !p.is_real() || !p.r.is_whole() || !p.r.is_positive_nil() { Err(EvalError::SolveValueType)? }
 
-                            if let Some(v) = unknown_var { if v != var { Err(EvalError::SolveValueType)? } }
-                            else { *unknown_var = Some(var.clone()); }
+                            if unknown_var != var { Err(EvalError::SolveValueType)? }
         
                             let a = if neg { -n.r } else { n.r };
                             terms.push(Term { a, p: p.r.get_num() })
@@ -199,13 +202,22 @@ impl Equation {
                             if !n.is_real() { Err(EvalError::SolveValueType)? }
                             if !p.is_real() || !p.r.is_whole() || !p.r.is_positive_nil() { Err(EvalError::SolveValueType)? }
 
-                            if let Some(v) = unknown_var { if v != var { Err(EvalError::SolveValueType)? } }
-                            else { *unknown_var = Some(var.clone()); }
+                            if unknown_var != var { Err(EvalError::SolveValueType)? }
         
                             let a = if neg { -n.r } else { n.r };
                             terms.push(Term { a, p: p.r.get_num() })
                         }
                         _ => Err(EvalError::SolveValueType)?,
+                    }
+                    _ => Err(EvalError::SolveValueType)?,
+                }
+                ASTNode::Pow(n1, n2) => match (n1.as_ref(), n2.as_ref()) {
+                    (ASTNode::Var(var), ASTNode::Num(p)) => {
+                        if !p.is_real() || !p.r.is_whole() || !p.r.is_positive_nil() { Err(EvalError::SolveValueType)? }
+
+                        if unknown_var != var { Err(EvalError::SolveValueType)? }
+    
+                        terms.push(Term { a: 1.into(), p: p.r.get_num() })
                     }
                     _ => Err(EvalError::SolveValueType)?,
                 }
@@ -215,17 +227,9 @@ impl Equation {
             Ok(())
         }
 
-        let mut unknown_var = None;
-
-        let mut eq = Equation { left: vec![], right: vec![], unknown_var: String::new() };
-        one_side(lhs, &mut eq.left, false, &mut unknown_var)?;
-        one_side(rhs, &mut eq.right, false, &mut unknown_var)?;
-
-        if let Some(var) = unknown_var {
-            eq.unknown_var = var;
-        } else {
-            return Err(EvalError::SolveValueType);
-        }
+        let mut eq = Equation { left: vec![], right: vec![], unknown_var: unknown_var };
+        one_side(lhs, &mut eq.left, false, &eq.unknown_var)?;
+        one_side(rhs, &mut eq.right, false, &eq.unknown_var)?;
 
         Ok(eq)
     }

@@ -52,6 +52,10 @@ impl State {
         self.stack.pop();
         assert!(self.stack.len() >= 1);
     }
+
+    pub fn vars(&self) -> impl Iterator<Item=(&String, &EvalValue)> {
+        self.stack.iter().flat_map(|map| map.iter())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +69,7 @@ pub enum EvalError {
     SetIVar,
     SolveValueType,
     SolveOverflow,
+    SolveVariable,
     Value(CalcError),
 }
 
@@ -86,6 +91,7 @@ impl fmt::Display for EvalError {
             EvalError::SetIVar => write!(f, "cannot set the `i` variable"),
             EvalError::SolveValueType => write!(f, "cannot solve this equation"),
             EvalError::SolveOverflow => write!(f, "overflow during solving"),
+            EvalError::SolveVariable => write!(f, "cannot find the variable for which you want to solve this equation"),
             EvalError::Value(e) => write!(f, "{}", e),
         }
     }
@@ -177,7 +183,25 @@ impl fmt::Display for ASTNode {
 }
 
 impl ASTNode {
-    fn eval_partial(&self, state: &mut State, unknown_var: &str) -> Result<ASTNode, EvalError> {
+    pub fn find_unknown_var(&self) -> Option<String> {
+        match self {
+            ASTNode::Par(v) => v.find_unknown_var(),
+            ASTNode::Var(v) => Some(v.clone()),
+            ASTNode::Add(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::Sub(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::Mul(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::Div(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::Mod(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::Pow(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::Mul(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::MatrixMul(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
+            ASTNode::Neg(v) => v.find_unknown_var(),
+            ASTNode::Pos(v) => v.find_unknown_var(),
+            _ => None,
+        }
+    }
+
+    pub fn eval_partial(&self, state: &mut State, unknown_var: &str) -> Result<ASTNode, EvalError> {
         Ok(match self {
             ASTNode::Par(v) => match v.eval_partial(state, unknown_var)? {
                 e @ ASTNode::Par(..) 
@@ -201,18 +225,35 @@ impl ASTNode {
             ASTNode::Num(v) => ASTNode::Num(*v),
             ASTNode::Add(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
                 (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_add(v2)?),
+
+                (other, ASTNode::Num(Complex::ZERO)) => other, // X + 0 = X forall X
+                (ASTNode::Num(Complex::ZERO), other) => other, // 0 + X = X forall X
+
                 (v1, v2) => ASTNode::Add(Box::new(v1.clone()), Box::new(v2.clone())),
             },
             ASTNode::Sub(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
                 (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_sub(v2)?),
+
+                (other, ASTNode::Num(Complex::ZERO)) => other, // X - 0 = X forall X
+                (ASTNode::Num(Complex::ZERO), other) => ASTNode::Neg(Box::new(other)), // 0 - X = -X forall X
+
                 (v1, v2) => ASTNode::Sub(Box::new(v1.clone()), Box::new(v2.clone())),
             },
             ASTNode::Mul(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
                 (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_mul(v2)?),
+
+                (_, ASTNode::Num(Complex::ZERO)) => ASTNode::Num(Complex::ZERO), // X * 0 = 0 forall X
+                (ASTNode::Num(Complex::ZERO), _) => ASTNode::Num(Complex::ZERO), // 0 * X = 0 forall X
+                (other, ASTNode::Num(Complex::ONE)) => other, // X * 1 = X forall X
+                (ASTNode::Num(Complex::ONE), other) => other, // 1 * X = X forall X
+
                 (v1, v2) => ASTNode::Mul(Box::new(v1.clone()), Box::new(v2.clone())),
             },
             ASTNode::Div(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
                 (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_div(v2)?),
+
+                (other, ASTNode::Num(Complex::ONE)) => other, // X / 1 = X forall X
+
                 (v1, v2) => ASTNode::Div(Box::new(v1.clone()), Box::new(v2.clone())),
             },
             ASTNode::Mod(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
@@ -221,6 +262,10 @@ impl ASTNode {
             },
             ASTNode::Pow(v1, v2) => match (v1.eval_partial(state, unknown_var)?, v2.eval_partial(state, unknown_var)?) {
                 (ASTNode::Num(v1), ASTNode::Num(v2)) => ASTNode::Num(v1.try_pow(v2)?),
+
+                (_, ASTNode::Num(Complex::ZERO)) => ASTNode::Num(Complex::ONE), // X ^ 0 = 1 forall X
+                (other, ASTNode::Num(Complex::ONE)) => other, // X ^ 1 = X forall X
+
                 (v1, v2) => ASTNode::Pow(Box::new(v1.clone()), Box::new(v2.clone())),
             },
             ASTNode::MatrixMul(v1, v2) => ASTNode::MatrixMul(v1.clone(), v2.clone()),
@@ -317,10 +362,14 @@ impl ASTNode {
             }
             ASTNode::Find(lhs, rhs_opt) => {
                 if let Some(rhs) = rhs_opt {
-                    let lhs = lhs.eval_partial(state, "x")?;
-                    let rhs = rhs.eval_partial(state, "x")?;
+                    let unknown_var = lhs.find_unknown_var().or_else(|| rhs.find_unknown_var());
+                    if unknown_var.is_none() { Err(EvalError::SolveVariable)? }
+                    let unknown_var = unknown_var.unwrap();
 
-                    let eq = Equation::try_from_ast(&lhs, &rhs)?;
+                    let lhs = lhs.eval_partial(state, &unknown_var[..])?;
+                    let rhs = rhs.eval_partial(state, &unknown_var[..])?;
+
+                    let eq = Equation::try_from_ast(&lhs, &rhs, unknown_var)?;
                     let reduced = eq.reduced();
 
                     reduced.print_solutions()?;

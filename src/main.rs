@@ -3,13 +3,14 @@ pub mod eval;
 pub mod matrix;
 pub mod ops;
 pub mod rational;
+pub mod solve;
 pub mod util;
 pub mod value;
-pub mod solve;
 
 use complex::*;
 use eval::*;
 use rational::*;
+use value::*;
 
 use std::io::Write;
 
@@ -20,12 +21,12 @@ peg::parser! {
             { n.parse().unwrap() } } / expected!("number")
 
         rule identifier() -> String
-            = quiet!{ ident:$(['a'..='z' | 'A'..='Z'] ['a'..='z' | 'A'..='Z' | '0'..='9']*)
+            = quiet!{ ident:$(['a'..='z' | 'A'..='Z' | '_'] ['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*)
             { ident.into() } } / expected!("identifier")
 
         rule matrix_row() -> Vec<Box<ASTNode>>
             = "[" " "* n:expression() ** (" "* "," " "*) " "*  "]"
-            { n }
+            { n } / expected!("matrix row")
 
         rule matrix() -> Vec<Vec<Box<ASTNode>>>
             = "[" " "* rows:matrix_row() ** (" "* ";" " "*) " "*  "]"
@@ -33,7 +34,7 @@ peg::parser! {
             / "[" " "* n:expression() ** (" "* ";" " "*) " "*  "]"
             { n.iter().map(|n| vec![n.clone()]).collect() }
             / rows:matrix_row()
-            { vec![rows] }
+            { vec![rows] } / expected!("matrix")
 
         pub rule expression() -> Box<ASTNode>
             = quiet!{ precedence!{
@@ -89,14 +90,18 @@ peg::parser! {
                 expr:number()
                 { Box::new(ASTNode::Num(Complex::real(expr))) }
             } }
-            // / expected!("expression")
+            / expected!("expression")
     }
 }
 
-// type ParseError = peg::error::ParseError<peg::str::LineCol>;
+struct HistoryEntry {
+    input: Box<ASTNode>,
+    value: EvalValue,
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut state = State::new();
+    let mut history: Vec<HistoryEntry> = Vec::new();
 
     let mut s = String::new();
     loop {
@@ -106,26 +111,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::io::stdout().flush()?;
         std::io::stdin().read_line(&mut s)?;
 
-        if s.len() == 0 {
-            break;
-        }
+        let trimmed = s.trim();
 
-        if s.trim() == "" {
+        if s.len() == 0 || trimmed == "exit" {
+            break;
+        } else if trimmed == "" {
+            continue;
+        } else if trimmed == "show vars" {
+            for el in state.vars() {
+                el.1.display_with_name(&el.0[..])
+            }
+            continue;
+        } else if trimmed == "show history" {
+            for el in &history {
+                println!("Input: {}, Result: {}", el.input, el.value);
+            }
             continue;
         }
 
-        let parsed_res = computor_parser::expression(s.trim());
+        let parsed_res = computor_parser::expression(trimmed);
 
         if let Err(e) = parsed_res {
-            println!("Parsing error");
+            println!("Parsing error at {}: expected {}", e.location, e.expected);
             continue;
         }
 
         let parsed = parsed_res.unwrap();
 
         match parsed.eval(&mut state) {
-            Ok(Some(val)) => println!("{}", val),
-            Ok(None) => {},
+            Ok(Some(val)) => {
+                println!("{}", val);
+
+                history.push(HistoryEntry {
+                    input: parsed,
+                    value: val,
+                })
+            },
+            Ok(None) => {}
             Err(e) => {
                 println!("Evaluation error: {}", e);
                 continue;

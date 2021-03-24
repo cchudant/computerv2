@@ -362,8 +362,6 @@ impl TryMatMul<&Matrix> for &Matrix {
     type Output = Matrix;
 
     fn try_mat_mul(self, other: &Matrix) -> Result<Self::Output, CalcError> {
-        println!("hi row={} col={}", self.cols, self.rows);
-        println!("ho row={} col={}", other.cols, other.rows);
         if self.cols != other.rows {
             Err(CalcError {
                 kind: CalcErrorKind::DimensionMismatch,
@@ -374,13 +372,10 @@ impl TryMatMul<&Matrix> for &Matrix {
         }
 
         let mut res = Matrix::zeros(self.rows, other.cols);
-        println!("res row={} col={}", res.rows, res.cols);
 
         for c in 0..other.cols {
             for r in 0..self.rows {
                 for i in 0..self.cols {
-                    println!("res[({},{})] += lhs[({},{})] * rhs[({},{})]", r, c, r, i, i, c);
-                    println!("res[({},{})] += {} * {}", r, c, self[(r, i)], other[(i, c)]);
                     res[(r, c)] = res[(r, c)] + self[(r, i)] * other[(i, c)];
                 }
             }
