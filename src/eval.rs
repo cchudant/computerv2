@@ -193,7 +193,6 @@ impl ASTNode {
             ASTNode::Div(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
             ASTNode::Mod(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
             ASTNode::Pow(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
-            ASTNode::Mul(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
             ASTNode::MatrixMul(v1, v2) => v1.find_unknown_var().or_else(|| v2.find_unknown_var()),
             ASTNode::Neg(v) => v.find_unknown_var(),
             ASTNode::Pos(v) => v.find_unknown_var(),

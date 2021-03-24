@@ -124,7 +124,13 @@ impl fmt::Display for Equation {
                 if el.p == 0 {
                     write!(f, "{}", a)?;
                 } else if el.p == 1 {
-                    write!(f, "{}{}", a, unknown_var)?;
+                    if a == 1.into() {
+                        write!(f, "{}", unknown_var)?;
+                    } else if a == (-1).into() {
+                        write!(f, "-{}", unknown_var)?;
+                    } else {
+                        write!(f, "{}{}", a, unknown_var)?;
+                    }
                 } else {
                     write!(f, "{}{}^{}", a, unknown_var, el.p)?;
                 }
@@ -147,12 +153,12 @@ impl Equation {
         fn one_side(s: &ASTNode, terms: &mut Vec<Term>, neg: bool, unknown_var: &String) -> Result<(), EvalError> {
             match s {
                 ASTNode::Add(v1, v2) => {
-                    one_side(v1, terms, false, unknown_var)?;
-                    one_side(v2, terms, false, unknown_var)?;
+                    one_side(v1, terms, neg, unknown_var)?;
+                    one_side(v2, terms, neg, unknown_var)?;
                 }
                 ASTNode::Sub(v1, v2) => {
-                    one_side(v1, terms, false, unknown_var)?;
-                    one_side(v2, terms, true, unknown_var)?;
+                    one_side(v1, terms, neg, unknown_var)?;
+                    one_side(v2, terms, !neg, unknown_var)?;
                 }
                 ASTNode::Num(n) => {
                     if !n.is_real() { Err(EvalError::SolveValueType)? }
@@ -163,7 +169,8 @@ impl Equation {
                 ASTNode::Var(var) => {
                     if unknown_var != var { Err(EvalError::SolveValueType)? }
 
-                    terms.push(Term { a: 1.into(), p: 1 })
+                    let a = if neg { -1 } else { 1 }.into();
+                    terms.push(Term { a, p: 1 })
                 }
                 ASTNode::Neg(v) => {
                     one_side(v, terms, !neg, unknown_var)?
@@ -217,7 +224,8 @@ impl Equation {
 
                         if unknown_var != var { Err(EvalError::SolveValueType)? }
     
-                        terms.push(Term { a: 1.into(), p: p.r.get_num() })
+                        let a = if neg { -1 } else { 1 }.into();
+                        terms.push(Term { a, p: p.r.get_num() })
                     }
                     _ => Err(EvalError::SolveValueType)?,
                 }
